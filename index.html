@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>個人行事曆記事本</title>
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --bg-color: #f4f7f6;
+            --text-color: #333;
+        }
+
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg-color); color: var(--text-color); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        
+        .container { display: flex; gap: 20px; max-width: 1000px; width: 100%; flex-wrap: wrap; }
+
+        /* 行事曆樣式 */
+        .calendar-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); flex: 1; min-width: 350px; }
+        .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; text-align: center; }
+        .day-name { font-weight: bold; color: #888; padding: 10px 0; }
+        .day { padding: 15px 5px; cursor: pointer; border-radius: 8px; transition: 0.3s; position: relative; }
+        .day:hover { background-color: #e1e9ff; }
+        .day.today { background-color: var(--primary-color); color: white; font-weight: bold; }
+        .day.selected { border: 2px solid var(--primary-color); }
+        .has-event::after { content: ''; position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); width: 5px; height: 5px; background: red; border-radius: 50%; }
+
+        /* 記事本樣式 */
+        .notepad-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); flex: 1; min-width: 350px; }
+        h2 { margin-top: 0; color: var(--primary-color); }
+        textarea { width: 100%; height: 200px; border: 1px solid #ddd; border-radius: 8px; padding: 10px; box-sizing: border-box; font-size: 16px; resize: none; margin-bottom: 10px; }
+        button { background-color: var(--primary-color); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; transition: 0.3s; }
+        button:hover { background-color: #357abd; }
+        
+        .notification-btn { margin-bottom: 20px; background-color: #28a745; }
+    </style>
+</head>
+<body>
+
+    <h1>📅 我的行事曆記事本</h1>
+    
+    <button class="notification-btn" onclick="requestPermission()">開啟每日提醒功能</button>
+
+    <div class="container">
+        <!-- 左側：行事曆 -->
+        <div class="calendar-card">
+            <div class="calendar-header">
+                <button onclick="changeMonth(-1)">❮</button>
+                <h2 id="monthDisplay"></h2>
+                <button onclick="changeMonth(1)">❯</button>
+            </div>
+            <div class="calendar-grid" id="calendarGrid">
+                <!-- 日期會由 JS 動態生成 -->
+            </div>
+        </div>
+
+        <!-- 右側：記事本 -->
+        <div class="notepad-card">
+            <h2 id="selectedDateText">選擇一個日期</h2>
+            <p>今日待辦事項：</p>
+            <textarea id="noteInput" placeholder="在此輸入今日計畫..."></textarea>
+            <button onclick="saveNote()">儲存內容</button>
+            <p id="statusMsg" style="color: green; font-size: 0.9em;"></p>
+        </div>
+    </div>
+
+    <script>
+        let currentDisplayDate = new Date();
+        let selectedDateStr = "";
+        const calendarGrid = document.getElementById('calendarGrid');
+        const monthDisplay = document.getElementById('monthDisplay');
+        const noteInput = document.getElementById('noteInput');
+        const selectedDateText = document.getElementById('selectedDateText');
+
+        // 初始化
+        function init() {
+            renderCalendar();
+            checkTodayNotification();
+        }
+
+        // 請求通知權限
+        function requestPermission() {
+            Notification.requestPermission().then(permission => {
+                if (permission === "granted") {
+                    alert("提醒功能已開啟！");
+                }
+            });
+        }
+
+        // 渲染行事曆
+        function renderCalendar() {
+            calendarGrid.innerHTML = "";
+            const year = currentDisplayDate.getFullYear();
+            const month = currentDisplayDate.getMonth();
+            
+            monthDisplay.innerText = `${year}年 ${month + 1}月`;
+
+            // 星期標題
+            const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+            weekDays.forEach(day => {
+                const div = document.createElement('div');
+                div.className = 'day-name';
+                div.innerText = day;
+                calendarGrid.appendChild(div);
+            });
+
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+            // 填充空白
+            for (let i = 0; i < firstDay; i++) {
+                calendarGrid.appendChild(document.createElement('div'));
+            }
+
+            // 填充日期
+            const today = new Date();
+            const todayStr = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
+
+            for (let i = 1; i <= daysInMonth; i++) {
+                const dayDiv = document.createElement('div');
+                dayDiv.className = 'day';
+                dayDiv.innerText = i;
+                
+                const dateKey = `${year}-${month}-${i}`;
+                
+                // 檢查是否有儲存內容
+                if (localStorage.getItem(dateKey)) {
+                    dayDiv.classList.add('has-event');
+                }
+
+                // 標記今天
+                if (dateKey === todayStr) {
+                    dayDiv.classList.add('today');
+                }
+
+                dayDiv.onclick = () => selectDate(year, month, i);
+                calendarGrid.appendChild(dayDiv);
+            }
+        }
+
+        function changeMonth(offset) {
+            currentDisplayDate.setMonth(currentDisplayDate.getMonth() + offset);
+            renderCalendar();
+        }
+
+        // 選擇日期
+        function selectDate(y, m, d) {
+            selectedDateStr = `${y}-${m}-${d}`;
+            selectedDateText.innerText = `${y}年${m+1}月${d}日`;
+            
+            // 讀取該日筆記
+            const savedNote = localStorage.getItem(selectedDateStr) || "";
+            noteInput.value = savedNote;
+
+            // 移除舊的選取樣式並加上新的
+            document.querySelectorAll('.day').forEach(el => el.classList.remove('selected'));
+            event.target.classList.add('selected');
+        }
+
+        // 儲存筆記
+        function saveNote() {
+            if (!selectedDateStr) {
+                alert("請先在行事曆上選擇一個日期！");
+                return;
+            }
+            const content = noteInput.value;
+            if (content.trim() === "") {
+                localStorage.removeItem(selectedDateStr);
+            } else {
+                localStorage.setItem(selectedDateStr, content);
+            }
+            
+            document.getElementById('statusMsg').innerText = "已自動儲存！";
+            setTimeout(() => document.getElementById('statusMsg').innerText = "", 2000);
+            renderCalendar(); // 刷新行事曆紅點
+        }
+
+        // 檢查今日提醒
+        function checkTodayNotification() {
+            const now = new Date();
+            const todayStr = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+            const todayTask = localStorage.getItem(todayStr);
+
+            if (todayTask && Notification.permission === "granted") {
+                new Notification("今日待辦提醒", {
+                    body: "您今天有待辦事項：\n" + todayTask.substring(0, 50) + "...",
+                    icon: "https://cdn-icons-png.flaticon.com/512/3652/3652191.png"
+                });
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
